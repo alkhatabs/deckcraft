@@ -13,11 +13,16 @@
 //! - dropped files are read asynchronously by `web::WebShell` and delivered through the inbox;
 //! - preferences are not persisted.
 //!
+//! `?siraaj` embeds it in a Siraaj page: `bridge` carries open/control/save over `postMessage` and the
+//! title bar is hidden.
+//!
 //! URL query flags: `?webgl` forces the WebGL2 backend instead of WebGPU; `?blank` starts with an
 //! empty presentation instead of the sample deck; `?show` starts the slide show.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
+#[cfg(target_arch = "wasm32")]
+mod bridge;
 #[cfg(target_arch = "wasm32")]
 mod web;
 

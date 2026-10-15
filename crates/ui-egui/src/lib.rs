@@ -440,6 +440,8 @@ pub struct SlideApp {
     pub ui: UiState,
     pub textures: textures::Textures,
     pub control_rx: Option<Receiver<ControlRequest>>,
+    /// Hosted inside another page (Siraaj): no title bar.
+    pub embedded: bool,
     /// Spelling squiggles, checked on a worker thread.
     pub squiggles: squiggles::Squiggles,
     pub dialog: Option<dialogs::Dialog>,
@@ -537,6 +539,7 @@ impl SlideApp {
             ui: UiState::default(),
             textures: textures::Textures::default(),
             control_rx: None,
+            embedded: false,
             squiggles: Default::default(),
             dialog: None,
             thesaurus_query: String::new(),
@@ -1792,7 +1795,9 @@ impl SlideApp {
         self.sync_backstage();
         self.keyboard(&ctx);
         self.sync_backstage();
-        ribbon::title_bar(self, ui);
+        if !self.embedded {
+            ribbon::title_bar(self, ui);
+        }
         if self.backstage.is_none() && self.session.active().is_some() {
             ribbon::show(self, ui);
             status::status_bar(self, ui);

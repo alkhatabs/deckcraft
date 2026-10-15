@@ -1,5 +1,6 @@
 //! The browser shell: web `Services`, drag-and-drop, and the eframe web runner.
 
+use crate::bridge::{self, Bridge};
 use deckcraft_engine::Session;
 use deckcraft_ui_egui::{Inbox, InboxEvent, InboxFile, Services, SlideApp};
 use wasm_bindgen::JsCast as _;
@@ -37,9 +38,21 @@ pub fn start() {
                         log::info!("deckcraft-web {}: wgpu backend {:?}", env!("CARGO_PKG_VERSION"), rs.adapter.get_info().backend);
                     }
                     let inbox: Inbox = Inbox::default();
-                    let mut app = SlideApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone()));
                     let q = query();
-                    if !q.contains("blank") {
+                    let embedded = q.contains("siraaj");
+                    let mut app = SlideApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone(), embedded));
+                    let mut host = None;
+                    if embedded {
+                        let (b, rx) = bridge::start(cc.egui_ctx.clone());
+                        app = app.with_control(rx);
+                        app.embedded = true;
+                        host = Some(b);
+                    }
+                    if embedded {
+                        if let Err(e) = app.run("file.new", serde_json::json!({})) {
+                            log::error!("new presentation: {e}");
+                        }
+                    } else if !q.contains("blank") {
                         if let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session) {
                             log::error!("sample deck: {e}");
                         }
@@ -49,7 +62,7 @@ pub fn start() {
                     if q.contains("show") {
                         app.start_show(0, false);
                     }
-                    Ok(Box::new(WebShell { app, inbox }))
+                    Ok(Box::new(WebShell { app, inbox, host, dirty: false }))
                 }),
             )
             .await;
@@ -71,6 +84,8 @@ fn query() -> String {
 struct WebShell {
     app: SlideApp,
     inbox: Inbox,
+    host: Option<Bridge>,
+    dirty: bool,
 }
 
 impl eframe::App for WebShell {
@@ -97,7 +112,21 @@ impl eframe::App for WebShell {
                 }
             });
         }
+        if let Some(host) = &self.host {
+            let opened = std::mem::take(&mut *host.opened.borrow_mut());
+            for (name, bytes) in opened {
+                self.app.open_or_insert_bytes(&name, &bytes);
+            }
+        }
         self.app.logic(ctx);
+        if let Some(host) = &self.host {
+            host.poll_replies();
+            let dirty = self.app.session.active().is_some_and(|d| d.is_dirty());
+            if dirty != self.dirty {
+                self.dirty = dirty;
+                bridge::report_dirty(dirty);
+            }
+        }
     }
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
@@ -111,7 +140,7 @@ impl eframe::App for WebShell {
 
 /// Web services: no file paths, so `pick_open`/`pick_save`/`read` stay `None` and the UI falls
 /// back to `open_async` (browser picker → inbox) and `download`.
-fn services(inbox: Inbox, ctx: egui::Context) -> Services {
+fn services(inbox: Inbox, ctx: egui::Context, embedded: bool) -> Services {
     let open_inbox = inbox.clone();
     Services {
         open_async: Some(Box::new(move |purpose: &str, request: u64| {
@@ -134,9 +163,9 @@ fn services(inbox: Inbox, ctx: egui::Context) -> Services {
                 ctx.request_repaint();
             });
         })),
-        write: Some(Box::new(|name: &str, bytes: &[u8]| download(name, bytes))),
-        download: Some(Box::new(|name: &str, bytes: &[u8]| {
-            if let Err(e) = download(name, bytes) {
+        write: Some(Box::new(move |name: &str, bytes: &[u8]| save(embedded, name, bytes))),
+        download: Some(Box::new(move |name: &str, bytes: &[u8]| {
+            if let Err(e) = save(embedded, name, bytes) {
                 log::error!("download of {name} failed: {e}");
             }
         })),
@@ -147,6 +176,16 @@ fn services(inbox: Inbox, ctx: egui::Context) -> Services {
 
 fn push_inbox(inbox: &Inbox, event: InboxEvent) {
     inbox.lock().unwrap_or_else(|e| e.into_inner()).push(event);
+}
+
+/// Embedded: the host page gets the bytes; otherwise the browser downloads them.
+fn save(embedded: bool, name: &str, bytes: &[u8]) -> Result<(), String> {
+    if embedded {
+        bridge::save_to_parent(name, bytes);
+        Ok(())
+    } else {
+        download(name, bytes)
+    }
 }
 
 /// Trigger a browser download of `bytes` named after the last component of `path`.
