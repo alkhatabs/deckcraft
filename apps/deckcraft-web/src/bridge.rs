@@ -4,12 +4,13 @@
 //!
 //! Parent → editor (`event.source` must be `window.parent`):
 //! - `{type: "siraaj.open", name, bytes: ArrayBuffer}`: open a presentation.
+//! - `{type: "siraaj.save"}`: reply with `siraaj.saved` carrying the active presentation as `.pptx`.
 //! - `{type: "siraaj.control", id, method, params}`: one control request (`docs/control-protocol.md`).
 //!
 //! Editor → parent: `siraaj.ready`, `siraaj.reply {id, reply}`, `siraaj.saved {name, bytes}`,
 //! `siraaj.dirty {dirty}`.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -24,6 +25,7 @@ pub type Opened = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 pub struct Bridge {
     pending: Pending,
     pub opened: Opened,
+    pub save_requested: Rc<Cell<bool>>,
 }
 
 fn post(msg: &JsValue, transfer: Option<&JsValue>) {
@@ -75,7 +77,8 @@ pub fn start(ctx: egui::Context) -> (Bridge, Receiver<ControlRequest>) {
     let (tx, rx): (Sender<ControlRequest>, Receiver<ControlRequest>) = std::sync::mpsc::channel();
     let pending: Pending = Rc::default();
     let opened: Opened = Rc::default();
-    let (pending_l, opened_l) = (pending.clone(), opened.clone());
+    let save_requested: Rc<Cell<bool>> = Rc::default();
+    let (pending_l, opened_l, save_l) = (pending.clone(), opened.clone(), save_requested.clone());
     let on_message = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
         let parent = web_sys::window().and_then(|w| w.parent().ok().flatten());
         let from_parent = match (e.source(), parent) {
@@ -93,6 +96,7 @@ pub fn start(ctx: egui::Context) -> (Bridge, Receiver<ControlRequest>) {
                 let bytes = js_sys::Uint8Array::new(&field(&data, "bytes")).to_vec();
                 opened_l.borrow_mut().push((name, bytes));
             }
+            Some("siraaj.save") => save_l.set(true),
             Some("siraaj.control") => {
                 let method = field(&data, "method").as_string().unwrap_or_default();
                 let params = Some(js_to_json(&field(&data, "params"))).filter(|v| !v.is_null()).unwrap_or(json!({}));
@@ -110,7 +114,7 @@ pub fn start(ctx: egui::Context) -> (Bridge, Receiver<ControlRequest>) {
     }
     on_message.forget();
     post(&message("siraaj.ready", &[]), None);
-    (Bridge { pending, opened }, rx)
+    (Bridge { pending, opened, save_requested }, rx)
 }
 
 impl Bridge {

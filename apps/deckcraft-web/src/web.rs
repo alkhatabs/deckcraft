@@ -121,6 +121,14 @@ impl eframe::App for WebShell {
         self.app.logic(ctx);
         if let Some(host) = &self.host {
             host.poll_replies();
+            if host.save_requested.replace(false)
+                && let Some(d) = self.app.session.active()
+            {
+                match deckcraft_engine::cmd::file::save_bytes(&d.doc, "pptx") {
+                    Ok(bytes) => bridge::save_to_parent("presentation.pptx", &bytes),
+                    Err(e) => log::error!("save for the host failed: {e}"),
+                }
+            }
             let dirty = self.app.session.active().is_some_and(|d| d.is_dirty());
             if dirty != self.dirty {
                 self.dirty = dirty;
