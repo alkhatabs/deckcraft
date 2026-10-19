@@ -8,7 +8,7 @@
 //! - `{type: "siraaj.control", id, method, params}`: one control request (`docs/control-protocol.md`).
 //!
 //! Editor → parent: `siraaj.ready`, `siraaj.reply {id, reply}`, `siraaj.saved {name, bytes}`,
-//! `siraaj.dirty {dirty}`.
+//! `siraaj.dirty {dirty}`, `siraaj.selection {slide, shapes}` (sent when the selection changes).
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -69,6 +69,15 @@ pub fn save_to_parent(name: &str, bytes: &[u8]) {
 
 pub fn report_dirty(dirty: bool) {
     post(&message("siraaj.dirty", &[("dirty", dirty.into())]), None);
+}
+
+/// The current slide index and the ids of the selected shapes on it.
+pub fn report_selection(slide: usize, shapes: &[u32]) {
+    let ids = js_sys::Array::new();
+    for id in shapes {
+        ids.push(&JsValue::from_f64(f64::from(*id)));
+    }
+    post(&message("siraaj.selection", &[("slide", JsValue::from_f64(slide as f64)), ("shapes", ids.into())]), None);
 }
 
 /// Starts the listener. Control requests arrive on the returned receiver (give it to

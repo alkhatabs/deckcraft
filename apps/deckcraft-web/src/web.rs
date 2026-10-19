@@ -62,7 +62,7 @@ pub fn start() {
                     if q.contains("show") {
                         app.start_show(0, false);
                     }
-                    Ok(Box::new(WebShell { app, inbox, host, dirty: false }))
+                    Ok(Box::new(WebShell { app, inbox, host, dirty: false, selection: (0, Vec::new()) }))
                 }),
             )
             .await;
@@ -86,6 +86,7 @@ struct WebShell {
     inbox: Inbox,
     host: Option<Bridge>,
     dirty: bool,
+    selection: (usize, Vec<u32>),
 }
 
 impl eframe::App for WebShell {
@@ -133,6 +134,14 @@ impl eframe::App for WebShell {
             if dirty != self.dirty {
                 self.dirty = dirty;
                 bridge::report_dirty(dirty);
+            }
+            if let Some(d) = self.app.session.active() {
+                let sel = &d.selection;
+                let current = (sel.slide, sel.shapes.iter().map(|id| id.0).collect::<Vec<u32>>());
+                if current != self.selection {
+                    bridge::report_selection(current.0, &current.1);
+                    self.selection = current;
+                }
             }
         }
     }
