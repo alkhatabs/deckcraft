@@ -33,13 +33,14 @@ pub fn substitutes(family: &str) -> &'static [&'static str] {
     match family.to_ascii_lowercase().as_str() {
         "calibri" | "calibri light" => &["Carlito", "Liberation Sans", "Arial", "Inter"],
         "cambria" | "cambria math" => &["Caladea", "Liberation Serif", "Times New Roman", "Merriweather"],
-        "arial" | "helvetica" | "helvetica neue" | "arial nova" => &["Liberation Sans", "Arial", "Helvetica Neue", "Helvetica", "Inter"],
+        "arial" | "helvetica" | "helvetica neue" | "arial nova" => &["Arimo", "Liberation Sans", "Arial", "Helvetica Neue", "Helvetica", "Inter"],
         "times new roman" | "times" => &["Liberation Serif", "Times New Roman", "Times", "Merriweather"],
         "courier new" | "courier" | "consolas" | "menlo" => &["Liberation Mono", "Courier New", "Menlo", "Courier"],
         "aptos" | "aptos display" | "aptos narrow" | "segoe ui" | "segoe ui light" | "segoe ui semibold" | "tahoma" | "verdana" => {
             &["Inter", "Helvetica Neue", "Arial", "Liberation Sans"]
         }
-        "georgia" | "garamond" | "book antiqua" | "palatino" | "palatino linotype" | "constantia" => &["Merriweather", "Liberation Serif", "Georgia"],
+        "georgia" => &["Gelasio", "Merriweather", "Liberation Serif", "Georgia"],
+        "garamond" | "book antiqua" | "palatino" | "palatino linotype" | "constantia" => &["Merriweather", "Liberation Serif", "Georgia"],
         "century gothic" | "avenir" | "avenir next" | "futura" | "gill sans" | "gill sans mt" | "trebuchet ms" | "corbel" | "candara" => {
             &["Montserrat", "Poppins", "Avenir Next", "Inter"]
         }
@@ -57,7 +58,7 @@ pub fn substitutes(family: &str) -> &'static [&'static str] {
 fn has_metric_twin(family: &str) -> bool {
     matches!(
         family.to_ascii_lowercase().as_str(),
-        "calibri" | "calibri light" | "cambria" | "cambria math" | "arial" | "helvetica" | "times new roman" | "times" | "courier new" | "courier"
+        "calibri" | "calibri light" | "cambria" | "cambria math" | "georgia" | "arial" | "helvetica" | "times new roman" | "times" | "courier new" | "courier"
     )
 }
 
@@ -1060,6 +1061,10 @@ impl FontDb {
     /// Is `family` available (loaded, or installed on the system)?
     pub fn has_family(&self, family: &str) -> bool {
         if self.is_loaded(family) {
+            return true;
+        }
+        // A metric-compatible twin draws the same lines, so the document looks as authored.
+        if has_metric_twin(family) && substitutes(family).iter().take(1).any(|twin| self.is_loaded(twin)) {
             return true;
         }
         #[cfg(not(target_arch = "wasm32"))]
