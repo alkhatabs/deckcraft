@@ -8,6 +8,11 @@ use serde_json::json;
 use crate::SlideApp;
 use crate::theme::{self, Tokens};
 
+/// Slide list widths when DeckCraft sits beside a chat: the narrowest it can be dragged to, and the
+/// width the host starts it at. Thumbnails fill the column, without the slide-number gutter.
+pub const EMBEDDED_MIN_WIDTH: f32 = 96.0;
+pub const EMBEDDED_START_WIDTH: f32 = 112.0;
+
 pub fn show(app: &mut SlideApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let in_master = app.session.active().is_some_and(|d| d.selection.target != Target::Slides);
@@ -18,7 +23,7 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
     let panel = egui::Panel::left("thumbs")
         .resizable(true)
         .default_size(app.ui.thumbs_width)
-        .size_range(150.0..=420.0)
+        .size_range(if app.embedded { EMBEDDED_MIN_WIDTH } else { 150.0 }..=420.0)
         .frame(egui::Frame::NONE.fill(t.chrome))
         .show(ui, |ui| {
             app.ui.thumbs_width = ui.available_width();
@@ -45,7 +50,8 @@ fn list(app: &mut SlideApp, ui: &mut Ui) {
     let cur = st.selection.slide;
     let multi = st.selection.slides.clone();
     let width = ui.available_width();
-    let tw = (width - 40.0).max(60.0);
+    let (gutter, margin) = if app.embedded { (8.0, 16.0) } else { (30.0, 40.0) };
+    let tw = (width - margin).max(60.0);
     let th = tw * (doc.slide_size.height / doc.slide_size.width.max(1.0)) as f32;
     let ppp = ui.ctx().pixels_per_point();
     let mut budget = 3u32;
@@ -94,19 +100,21 @@ fn list(app: &mut SlideApp, ui: &mut Ui) {
             });
         }
         let (row, resp) = ui.allocate_exact_size(vec2(width, th + 16.0), Sense::click_and_drag());
-        let img = crate::textures::device_pixel_rect(Rect::from_min_size(pos2(row.min.x + 30.0, row.min.y + 6.0), vec2(tw, th)), ppp);
+        let img = crate::textures::device_pixel_rect(Rect::from_min_size(pos2(row.min.x + gutter, row.min.y + 6.0), vec2(tw, th)), ppp);
         rects.push((i, row));
         let p = ui.painter();
         let id = doc.slides.get(i).map(|s| s.id);
         let selected = i == cur || id.is_some_and(|id| multi.contains(&id));
         let hidden = doc.slides.get(i).is_some_and(|s| s.hidden);
-        p.text(
-            pos2(row.min.x + 14.0, img.min.y + 2.0),
-            Align2::CENTER_TOP,
-            format!("{}", i + 1),
-            theme::font(12.0),
-            if selected { t.text } else { t.text_dim },
-        );
+        if !app.embedded {
+            p.text(
+                pos2(row.min.x + 14.0, img.min.y + 2.0),
+                Align2::CENTER_TOP,
+                format!("{}", i + 1),
+                theme::font(12.0),
+                if selected { t.text } else { t.text_dim },
+            );
+        }
         if hidden {
             p.line_segment([pos2(row.min.x + 8.0, img.min.y + 18.0), pos2(row.min.x + 20.0, img.min.y + 6.0)], Stroke::new(1.0, t.text_dim));
         }

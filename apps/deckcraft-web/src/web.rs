@@ -46,6 +46,7 @@ pub fn start() {
                         let (b, rx) = bridge::start(cc.egui_ctx.clone());
                         app = app.with_control(rx);
                         app.embedded = true;
+                        app.ui.thumbs_width = deckcraft_ui_egui::thumbs::EMBEDDED_START_WIDTH;
                         host = Some(b);
                     }
                     if embedded {
@@ -123,10 +124,14 @@ impl eframe::App for WebShell {
         if let Some(host) = &self.host {
             host.poll_replies();
             if host.save_requested.replace(false)
-                && let Some(d) = self.app.session.active()
+                && let Some(d) = self.app.session.active_mut()
             {
                 match deckcraft_engine::cmd::file::save_bytes(&d.doc, "pptx") {
-                    Ok(bytes) => bridge::save_to_parent("presentation.pptx", &bytes),
+                    Ok(bytes) => {
+                        bridge::save_to_parent("presentation.pptx", &bytes);
+                        // The host holds these bytes now, so "dirty" means changes it has not seen.
+                        d.saved_doc = d.doc.clone();
+                    }
                     Err(e) => log::error!("save for the host failed: {e}"),
                 }
             }
